@@ -52,3 +52,14 @@ db/postgres | procedure | pool_close
 db/postgres | procedure | acquire
 db/postgres | procedure | release
 db/postgres | procedure | pool_stats
+db/postgres | enum | Isolation
+db/postgres | type | Tx_Options
+db/postgres | enum | Tx_State
+db/postgres | type | Tx
+db/postgres | procedure | begin
+db/postgres | procedure | tx_execute
+db/postgres | procedure | tx_query
+db/postgres | procedure | tx_query_one
+db/postgres | procedure | commit
+db/postgres | procedure | rollback
+db/postgres | procedure | rollback_if_open

@@ -139,6 +139,15 @@ echo "postgres: running the bounded-pool corpus (expected GREEN)"
 grep -q 'All tests were successful' "$TMP/pool.log" ||
   fail "the bounded-pool corpus did not report all green"
 
+echo "postgres: running the transaction corpus (expected GREEN)"
+"$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres_tx" \
+  "${COLLECTIONS[@]}" \
+  -define:POSTGRES_LIB="$LIBPQ_DEFINE" \
+  -out:"$TMP/tx" >"$TMP/tx.log" 2>&1 ||
+  { cat "$TMP/tx.log" >&2; fail "the transaction corpus is not green"; }
+grep -q 'All tests were successful' "$TMP/tx.log" ||
+  fail "the transaction corpus did not report all green"
+
 # --- 4. mutation controls: each green suite must be able to fail ---
 
 mkdir -p "$TMP/mut/db"
@@ -164,7 +173,17 @@ if "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres_pool" \
   -define:POSTGRES_LIB="$MUT_DEFINE" -out:"$TMP/mut-pool" >/dev/null 2>&1; then
   fail "broken-connection-discard mutation unexpectedly passed; the pool corpus is not evidence"
 fi
-echo "postgres: mutation controls caught the broken SQLSTATE map and the broken-connection reuse"
+
+echo "postgres: mutation control (a rollback that does not roll back must fail the tx corpus)"
+cp "$CRYSTALS_ROOT/db/postgres/pool.odin" "$TMP/mut/db/postgres/pool.odin"
+cp "$CRYSTALS_ROOT/db/postgres/tx.odin" "$TMP/mut/db/postgres/tx.odin"
+sed -i 's/tx._name, "ROLLBACK"/tx._name, "SELECT 1"/' "$TMP/mut/db/postgres/tx.odin"
+if "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres_tx" \
+  -collection:crystals="$TMP/mut" -collection:uruquim="$URUQUIM_ROOT" \
+  -define:POSTGRES_LIB="$MUT_DEFINE" -out:"$TMP/mut-tx" >/dev/null 2>&1; then
+  fail "no-op-rollback mutation unexpectedly passed; the tx corpus is not evidence"
+fi
+echo "postgres: mutation controls caught the broken SQLSTATE map, broken-connection reuse and a no-op rollback"
 
 echo "$LAB_OUTPUT"
 echo "PASS: PostgreSQL execution, decoding, deadlines, bounds and bounded pool"
