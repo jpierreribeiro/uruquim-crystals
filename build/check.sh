@@ -83,6 +83,15 @@ echo "crystals: web/health exports one detached Router constructor"
 
 verify_ledger db/postgres
 
+# The raw libpq FFI types must never appear in a public signature or field. The
+# wrapper keeps handles as rawptr; the compiler inventory proves nothing leaks.
+if "$ODIN_BIN" doc "$CRYSTALS_ROOT/db/postgres" \
+    -collection:uruquim="$URUQUIM_ROOT" \
+    -collection:crystals="$CRYSTALS_ROOT" 2>/dev/null \
+  | grep -qE '\bpq\.(Conn|Result|Cancel|OID|Format|Exec_Status|Connection_Status)\b'; then
+  fail "an FFI type escapes the db/postgres public surface"
+fi
+
 # No shipping Crystal may reach into core internals or private state.
 if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db"; then
   fail "a Crystal imports core internals"
@@ -94,7 +103,7 @@ fi
 echo "crystals: core dependency is one-way and pinned at $EXPECTED_CORE"
 echo "PASS: web/health and db/postgres ledgers verified"
 
-# --- WP74 driver-selection controls and WP75 wire/error laboratory ---
+# --- WP74 driver-selection controls and the PostgreSQL Service Crystal ---
 
 env \
   URUQUIM_ODIN_BIN="$ODIN_BIN" \
@@ -105,4 +114,4 @@ env \
   URUQUIM_ODIN_BIN="$ODIN_BIN" \
   URUQUIM_ROOT="$URUQUIM_ROOT" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
-  bash "$CRYSTALS_ROOT/build/check_wp75_controls.sh"
+  bash "$CRYSTALS_ROOT/build/check_postgres_controls.sh"
