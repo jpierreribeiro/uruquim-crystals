@@ -124,6 +124,13 @@ verify_ledger web/validate
   -collection:crystals="$CRYSTALS_ROOT"
 verify_ledger db/sqlcheck
 
+# --- examples/notes: the real PostgreSQL reference application (WP83) ---
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/examples/notes" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+
 "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/validate" \
   -collection:uruquim="$URUQUIM_ROOT" \
   -collection:crystals="$CRYSTALS_ROOT" \
@@ -186,3 +193,9 @@ env \
   URUQUIM_ROOT="$URUQUIM_ROOT" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
   bash "$CRYSTALS_ROOT/build/check_sqlcheck_controls.sh"
+
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_ROOT="$URUQUIM_ROOT" \
+  URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
+  bash "$CRYSTALS_ROOT/build/check_notes_controls.sh"
