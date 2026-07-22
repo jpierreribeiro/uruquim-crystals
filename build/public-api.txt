@@ -63,3 +63,17 @@ db/postgres | procedure | tx_query_one
 db/postgres | procedure | commit
 db/postgres | procedure | rollback
 db/postgres | procedure | rollback_if_open
+db/migrate | enum | Error_Kind
+db/migrate | type | Error
+db/migrate | procedure | is_err
+db/migrate | type | Migration
+db/migrate | enum | Migration_State
+db/migrate | type | Plan_Item
+db/migrate | type | Up_Options
+db/migrate | type | Runner
+db/migrate | procedure | load
+db/migrate | procedure | open
+db/migrate | procedure | close
+db/migrate | procedure | status
+db/migrate | procedure | up
+db/migrate | procedure | down
