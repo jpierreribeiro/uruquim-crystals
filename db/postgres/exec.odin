@@ -83,6 +83,40 @@ execute :: proc(
 	}
 }
 
+// exec_script runs a trusted multi-statement SQL script with no parameters,
+// using the simple query protocol. It exists for migrations and setup scripts,
+// where a single file legitimately contains several DDL statements; it takes no
+// bound values and must never receive user input, since the simple protocol has
+// no parameter separation. The statements run in the connection's current
+// transaction state (inside an open transaction if one was begun).
+exec_script :: proc(c: ^Conn, name: string, sql: string, loc := #caller_location) -> (Command, Error) {
+	if c._closed {
+		return Command{}, err(.Closed, name, loc)
+	}
+	if c._broken {
+		return Command{}, err(.Connection_Lost, name, loc)
+	}
+
+	arena: virtual.Arena
+	ally := scratch(&arena)
+	defer virtual.arena_destroy(&arena)
+
+	sql_c, _ := strings.clone_to_cstring(sql, ally)
+	res := pq.exec(pq.Conn(c._pg), sql_c)
+	if res == nil {
+		c._broken = true
+		return Command{}, err(.Connection_Lost, name, loc)
+	}
+	defer pq.clear(res)
+
+	#partial switch pq.result_status(res) {
+	case .Command_OK, .Tuples_OK, .Empty_Query:
+		return Command{}, Error{}
+	case:
+		return Command{}, result_error(c, res, name, loc)
+	}
+}
+
 // query runs a statement and returns a cursor. The caller closes the returned
 // Rows exactly once, even on error paths.
 query :: proc(

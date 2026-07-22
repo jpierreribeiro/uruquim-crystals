@@ -26,6 +26,7 @@ db/postgres | type | Query_Opts
 db/postgres | type | Command
 db/postgres | type | Rows
 db/postgres | procedure | execute
+db/postgres | procedure | exec_script
 db/postgres | procedure | query
 db/postgres | procedure | query_one
 db/postgres | procedure | rows_next
@@ -77,3 +78,5 @@ db/migrate | procedure | close
 db/migrate | procedure | status
 db/migrate | procedure | up
 db/migrate | procedure | down
+db/migrate | procedure | destroy_migrations
+db/migrate | procedure | destroy_plan
