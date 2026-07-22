@@ -43,3 +43,12 @@ db/postgres | procedure | row_opt_i64
 db/postgres | procedure | row_opt_f64
 db/postgres | procedure | row_opt_bool
 db/postgres | procedure | row_opt_text
+db/postgres | type | Pool_Config
+db/postgres | type | Pool
+db/postgres | type | Pool_Stats
+db/postgres | constant | DEFAULT_ACQUIRE_TIMEOUT_MS
+db/postgres | procedure | pool_open
+db/postgres | procedure | pool_close
+db/postgres | procedure | acquire
+db/postgres | procedure | release
+db/postgres | procedure | pool_stats
