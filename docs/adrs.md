@@ -84,3 +84,15 @@ PATCH distinguishes "leave", "clear" and "replace". Validation uses explicit rul
 calls rather than struct tags or reflection, so there are no unknown flags or
 contradictory annotations to fail closed on. The error set is hard-bounded and
 reports truncation. The full contract lives in `planning/wp81-validation.md`.
+
+## ADR-C010 — the SQL checker inspects, it does not generate
+
+**ACCEPTED, 2026-07-22 (WP82).** The optional checker (`db/sqlcheck`) prepares
+each named query against a real migrated database and compares the parameter and
+result metadata PostgreSQL infers (via `pg_prepared_statements`) against the
+developer's declared expectations. It generates no code and the runtime
+application keeps executing explicit SQL; the checker only prepares and inspects.
+A query PostgreSQL cannot statically prepare is reported `Unchecked`, never
+falsely certified. WP82 is therefore delivered rather than refused: a useful
+check exists without a mandatory compiler or code generator. The full contract
+lives in `planning/wp82-sqlcheck.md`.

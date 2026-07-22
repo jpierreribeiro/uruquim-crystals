@@ -115,3 +115,12 @@ validate | procedure | one_of
 web/validate | constant | STATUS
 web/validate | procedure | respond
 web/validate | procedure | respond_if_invalid
+db/sqlcheck | type | Check
+db/sqlcheck | enum | Finding_Kind
+db/sqlcheck | type | Finding
+db/sqlcheck | enum | Error_Kind
+db/sqlcheck | type | Error
+db/sqlcheck | procedure | is_err
+db/sqlcheck | procedure | run
+db/sqlcheck | procedure | has_failures
+db/sqlcheck | procedure | destroy_findings
