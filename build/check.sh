@@ -116,6 +116,14 @@ verify_ledger validate
   -collection:crystals="$CRYSTALS_ROOT"
 verify_ledger web/validate
 
+# --- db/sqlcheck: optional CI query checker (WP82) ---
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/db/sqlcheck" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+verify_ledger db/sqlcheck
+
 "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/validate" \
   -collection:uruquim="$URUQUIM_ROOT" \
   -collection:crystals="$CRYSTALS_ROOT" \
@@ -172,3 +180,9 @@ env \
   URUQUIM_ROOT="$URUQUIM_ROOT" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
   bash "$CRYSTALS_ROOT/build/check_migrate_controls.sh"
+
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_ROOT="$URUQUIM_ROOT" \
+  URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
+  bash "$CRYSTALS_ROOT/build/check_sqlcheck_controls.sh"
