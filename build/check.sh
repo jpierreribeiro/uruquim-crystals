@@ -169,6 +169,18 @@ fi
 echo "crystals: core dependency is one-way and pinned at $EXPECTED_CORE"
 echo "PASS: web/health and db/postgres ledgers verified"
 
+# --- Phase 6 freeze marker (WP84) ---
+
+test -f "$CRYSTALS_ROOT/docs/phase-6-freeze.md" ||
+  fail "the Phase 6 freeze document is missing"
+grep -q 'Status: FROZEN' "$CRYSTALS_ROOT/docs/phase-6-freeze.md" ||
+  fail "the Phase 6 freeze document does not declare the freeze"
+for pkg in web/health db/postgres db/migrate validate web/validate db/sqlcheck; do
+  awk -F' \\| ' -v p="$pkg" '$1==p{f=1} END{exit f?0:1}' "$CRYSTALS_ROOT/build/public-api.txt" ||
+    fail "frozen package $pkg is absent from the public ledger"
+done
+echo "crystals: Phase 6 data stack is frozen (6 packages, docs/phase-6-freeze.md)"
+
 # --- WP74 driver-selection controls and the PostgreSQL Service Crystal ---
 
 env \
