@@ -7,7 +7,7 @@ Verification is commit-level while Uruquim has no stable release tag.
 | Odin release | `dev-2026-07a` |
 | Odin commit | `819fdc7` |
 | Uruquim commit | `f51fc127f4c7f937069b867d295e271c40e13ff5` |
-| Uruquim phase | Phase 6, WP72 merged |
+| Uruquim phase | Phase 6 FROZEN (data stack WP73–83; see docs/phase-6-freeze.md) |
 | Platform | Linux x86-64 |
 | PostgreSQL server harness | `postgres:16-alpine`, pinned by digest |
 | libpq ABI | `libpq.so.5`, version 16 or newer |

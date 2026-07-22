@@ -52,6 +52,23 @@ odin build ./cmd/api \
 No package manager, generator, registry or runtime plugin mechanism is
 required.
 
+## Packages
+
+Phase 6 is frozen ([docs/phase-6-freeze.md](docs/phase-6-freeze.md)). The data
+stack composes over the core public surface:
+
+| Package | Kind | What it is |
+|---|---|---|
+| `web/health` | Route | detached liveness route |
+| `db/postgres` | Service | PostgreSQL over libpq: pool, cancellation, transactions, fail-closed decoding |
+| `db/migrate` (+ `cmd/migrate`) | Tool | fail-closed migration runner; never runs at server boot |
+| `validate` (+ `web/validate`) | Library + Request | transport-free validation, three-state `Patch`, HTTP adapter |
+| `db/sqlcheck` | Tool | optional CI query checker; inspects, never generates |
+| `examples/notes` | Example | a real CRUD application over PostgreSQL |
+
+SQL stays explicit; parameters, transactions, migrations and teardown are
+visible. No ORM, Active Record, DI container or automatic migration on boot.
+
 ## Status
 
 Experimental. Linux x86-64 and the pinned Odin/Uruquim revisions are the only
