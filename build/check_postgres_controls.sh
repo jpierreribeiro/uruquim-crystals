@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PostgreSQL Service Crystal controls (WP75 laboratory + WP76 execution).
+# PostgreSQL Service Crystal controls (WP75 laboratory, WP76 execution, WP77 pool).
 #
 # Evidence, in order:
 #
 #   1. A raw-libpq laboratory probe proving the pinned server really produces
 #      every condition the corpus targets, with a negative control that mutates
 #      an expected SQLSTATE and must fail (WP75, permanent).
-#   2. The db/postgres execution/decoding corpus, GREEN against the container:
-#      connection/auth policy, typed SQLSTATE kinds, parameter separation, NULL
-#      distinct from empty/zero, fail-closed decoding, cardinality and
-#      connection-loss quarantine (WP76).
-#   3. A mutation control that breaks the SQLSTATE→kind map and proves the green
-#      corpus catches it — a suite that cannot fail is not evidence.
-#   4. The backpressure corpus (statement-timeout cancellation, bounded fields),
-#      RED-under-control until WP77 implements deadlines and bounds.
+#   2. The db/postgres execution/decoding/deadline/bounds corpus, GREEN against
+#      the container: connection/auth policy, typed SQLSTATE kinds, parameter
+#      separation, NULL distinct from empty/zero, fail-closed decoding,
+#      cardinality, connection-loss quarantine, statement-timeout cancellation
+#      and bounded results (WP76 + WP77).
+#   3. The bounded-pool corpus, GREEN: acquire/release, min_conns readiness,
+#      typed Pool_Exhausted under saturation, broken-connection quarantine and
+#      closed-pool refusal (WP77).
+#   4. Mutation controls that break the SQLSTATE→kind map and the pool's
+#      broken-connection discard, proving each green suite catches it — a suite
+#      that cannot fail is not evidence.
 
 CRYSTALS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ODIN_BIN="${URUQUIM_ODIN_BIN:-${URUQUIM_COMPILER:-odin}}"
@@ -114,53 +117,54 @@ if env URUQUIM_TEST_DATABASE_URL="$DATABASE_URL" "$TMP/lab-mutant" >/dev/null 2>
 fi
 echo "postgres: laboratory probe and its negative control are sound"
 
-# --- 2. the execution/decoding corpus is GREEN against the container ---
+# --- 2. the execution/decoding/deadline/bounds corpus is GREEN ---
 
-echo "postgres: running the db/postgres execution/decoding corpus (expected GREEN)"
+echo "postgres: running the db/postgres execution corpus (expected GREEN)"
 "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres" \
   "${COLLECTIONS[@]}" \
   -define:POSTGRES_LIB="$LIBPQ_DEFINE" \
   -out:"$TMP/corpus" >"$TMP/corpus.log" 2>&1 ||
-  { cat "$TMP/corpus.log" >&2; fail "the execution/decoding corpus is not green"; }
+  { cat "$TMP/corpus.log" >&2; fail "the execution corpus is not green"; }
 grep -q 'All tests were successful' "$TMP/corpus.log" ||
-  fail "the execution/decoding corpus did not report all green"
+  fail "the execution corpus did not report all green"
 
-# --- 3. mutation control: breaking the SQLSTATE map must fail the corpus ---
+# --- 3. the bounded-pool corpus is GREEN ---
 
-echo "postgres: mutation control (broken SQLSTATE map must fail the corpus)"
+echo "postgres: running the bounded-pool corpus (expected GREEN)"
+"$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres_pool" \
+  "${COLLECTIONS[@]}" \
+  -define:POSTGRES_LIB="$LIBPQ_DEFINE" \
+  -out:"$TMP/pool" >"$TMP/pool.log" 2>&1 ||
+  { cat "$TMP/pool.log" >&2; fail "the bounded-pool corpus is not green"; }
+grep -q 'All tests were successful' "$TMP/pool.log" ||
+  fail "the bounded-pool corpus did not report all green"
+
+# --- 4. mutation controls: each green suite must be able to fail ---
+
 mkdir -p "$TMP/mut/db"
 cp -r "$CRYSTALS_ROOT/db/postgres" "$TMP/mut/db/postgres"
 cp -r "$CRYSTALS_ROOT/vendor" "$TMP/mut/vendor"
-sed -i 's/return \.Unique_Violation/return .Query_Failed/' "$TMP/mut/db/postgres/internal.odin"
 MUT_DEFINE="$(realpath --relative-to="$TMP/mut/vendor/odin-postgresql" "$LIBPQ_PATH")"
+
+echo "postgres: mutation control (broken SQLSTATE map must fail the execution corpus)"
+cp "$CRYSTALS_ROOT/db/postgres/internal.odin" "$TMP/mut/db/postgres/internal.odin"
+sed -i 's/return \.Unique_Violation/return .Query_Failed/' "$TMP/mut/db/postgres/internal.odin"
 if "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres" \
-  -collection:crystals="$TMP/mut" \
-  -collection:uruquim="$URUQUIM_ROOT" \
-  -define:POSTGRES_LIB="$MUT_DEFINE" \
-  -out:"$TMP/mut-corpus" >/dev/null 2>&1; then
+  -collection:crystals="$TMP/mut" -collection:uruquim="$URUQUIM_ROOT" \
+  -define:POSTGRES_LIB="$MUT_DEFINE" -out:"$TMP/mut-corpus" >/dev/null 2>&1; then
   fail "SQLSTATE-mapping mutation unexpectedly passed; the green corpus is not evidence"
 fi
-echo "postgres: mutation control caught the broken SQLSTATE map"
 
-# --- 4. backpressure corpus is RED-under-control until WP77 ---
-
-echo "postgres: running the backpressure corpus (expected RED until WP77)"
-if "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres_backpressure" \
-  "${COLLECTIONS[@]}" \
-  -define:POSTGRES_LIB="$LIBPQ_DEFINE" \
-  -out:"$TMP/bp" >"$TMP/bp.log" 2>&1; then
-  fail "the backpressure corpus unexpectedly passed; it must be RED until WP77"
+echo "postgres: mutation control (pool keeping a broken connection must fail the pool corpus)"
+cp "$CRYSTALS_ROOT/db/postgres/internal.odin" "$TMP/mut/db/postgres/internal.odin"
+cp "$CRYSTALS_ROOT/db/postgres/pool.odin" "$TMP/mut/db/postgres/pool.odin"
+sed -i 's/is_broken(c) || conn_expired(p, c)/conn_expired(p, c)/' "$TMP/mut/db/postgres/pool.odin"
+if "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/postgres_pool" \
+  -collection:crystals="$TMP/mut" -collection:uruquim="$URUQUIM_ROOT" \
+  -define:POSTGRES_LIB="$MUT_DEFINE" -out:"$TMP/mut-pool" >/dev/null 2>&1; then
+  fail "broken-connection-discard mutation unexpectedly passed; the pool corpus is not evidence"
 fi
-grep -q 'All tests failed' "$TMP/bp.log" ||
-  fail "not every backpressure test is RED"
-if grep -qiE 'segmentation|sigsegv|signal .* caught' "$TMP/bp.log"; then
-  fail "backpressure corpus failed by crashing rather than by controlled assertion"
-fi
-for kind in Timeout Result_Too_Large; do
-  grep -q "$kind" "$CRYSTALS_ROOT/tests/postgres_backpressure/backpressure_test.odin" ||
-    fail "backpressure corpus no longer covers $kind"
-done
-echo "postgres: backpressure corpus is RED-under-control"
+echo "postgres: mutation controls caught the broken SQLSTATE map and the broken-connection reuse"
 
 echo "$LAB_OUTPUT"
-echo "PASS: PostgreSQL execution, decoding and wire/error laboratory"
+echo "PASS: PostgreSQL execution, decoding, deadlines, bounds and bounded pool"

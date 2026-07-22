@@ -65,7 +65,7 @@ execute :: proc(
 
 	vals, lens, fmts, n := encode_params(ally, params)
 	sql_c, _ := strings.clone_to_cstring(sql, ally)
-	res := pq.exec_params(pq.Conn(c._pg), sql_c, n, nil, ptr(vals), ptr_i32(lens), ptr_fmt(fmts), .Text)
+	res, timed_out := exec_with_deadline(c, sql_c, n, ptr(vals), ptr_i32(lens), ptr_fmt(fmts), opts.deadline_ms)
 	if res == nil {
 		c._broken = true
 		return Command{}, err(.Connection_Lost, name, loc)
@@ -77,7 +77,9 @@ execute :: proc(
 		affected, _ := strconv.parse_i64(string(pq.cmd_tuples(res)))
 		return Command{rows_affected = affected}, Error{}
 	case:
-		return Command{}, result_error(c, res, name, loc)
+		e := result_error(c, res, name, loc)
+		adjust_timeout(c, &e, timed_out)
+		return Command{}, e
 	}
 }
 
@@ -104,7 +106,7 @@ query :: proc(
 
 	vals, lens, fmts, n := encode_params(ally, params)
 	sql_c, _ := strings.clone_to_cstring(sql, ally)
-	res := pq.exec_params(pq.Conn(c._pg), sql_c, n, nil, ptr(vals), ptr_i32(lens), ptr_fmt(fmts), .Text)
+	res, timed_out := exec_with_deadline(c, sql_c, n, ptr(vals), ptr_i32(lens), ptr_fmt(fmts), opts.deadline_ms)
 	if res == nil {
 		c._broken = true
 		return Rows{_closed = true}, err(.Connection_Lost, name, loc)
@@ -112,6 +114,10 @@ query :: proc(
 
 	#partial switch pq.result_status(res) {
 	case .Tuples_OK, .Command_OK:
+		if be := enforce_bounds(res, opts, name, loc); is_err(be) {
+			pq.clear(res)
+			return Rows{_closed = true}, be
+		}
 		return Rows{
 				_res = rawptr(res),
 				_conn = c,
@@ -122,8 +128,60 @@ query :: proc(
 			Error{}
 	case:
 		e := result_error(c, res, name, loc)
+		adjust_timeout(c, &e, timed_out)
 		pq.clear(res)
 		return Rows{_closed = true}, e
+	}
+}
+
+// enforce_bounds refuses a result that exceeds any configured hard limit before
+// the caller can decode it, so an oversized value is a typed Result_Too_Large
+// rather than an unbounded application allocation. libpq has already buffered the
+// server's bytes; the bound caps what the wrapper will expose and copy.
+@(private)
+enforce_bounds :: proc(
+	res: pq.Result,
+	opts: Query_Opts,
+	name: string,
+	loc: runtime.Source_Code_Location,
+) -> Error {
+	nrows := int(pq.n_tuples(res))
+	ncols := int(pq.n_fields(res))
+	if opts.max_rows > 0 && nrows > opts.max_rows {
+		return err(.Result_Too_Large, name, loc)
+	}
+	if opts.max_field_bytes <= 0 && opts.max_total_bytes <= 0 {
+		return Error{}
+	}
+	total := 0
+	for row in 0 ..< nrows {
+		for col in 0 ..< ncols {
+			l := int(pq.get_length(res, i32(row), i32(col)))
+			if opts.max_field_bytes > 0 && l > opts.max_field_bytes {
+				return err(.Result_Too_Large, name, loc)
+			}
+			total += l
+			if opts.max_total_bytes > 0 && total > opts.max_total_bytes {
+				return err(.Result_Too_Large, name, loc)
+			}
+		}
+	}
+	return Error{}
+}
+
+// adjust_timeout reinterprets a failure that coincided with a dispatched
+// cancellation. A server-confirmed 57014 is a Timeout; any other outcome after a
+// dispatched cancel leaves the connection uncertain and quarantined.
+@(private)
+adjust_timeout :: proc(c: ^Conn, e: ^Error, timed_out: bool) {
+	if !timed_out {
+		return
+	}
+	if err_sqlstate(e) == "57014" {
+		e.kind = .Timeout
+	} else {
+		c._broken = true
+		e.kind = .Connection_Lost
 	}
 }
 

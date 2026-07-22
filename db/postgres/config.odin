@@ -40,6 +40,12 @@ Config :: struct {
 	// connect_timeout_ms bounds the connection attempt. 0 uses the wrapper's
 	// default; it is never unbounded.
 	connect_timeout_ms: int,
+
+	// statement_timeout_ms sets a server-side statement_timeout on every command
+	// this connection runs, so a query is bounded even without a per-call
+	// deadline. 0 leaves it unset. A per-query Query_Opts.deadline_ms adds a
+	// tighter client-side cancellation on top.
+	statement_timeout_ms: int,
 }
 
 // DEFAULT_CONNECT_TIMEOUT_MS is used when Config.connect_timeout_ms is 0.

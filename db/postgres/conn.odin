@@ -3,6 +3,7 @@ package postgres
 import "base:runtime"
 import "core:mem/virtual"
 import "core:strings"
+import "core:time"
 import pq "crystals:vendor/odin-postgresql"
 
 // Conn is one physical connection. It owns a libpq PGconn handle, kept as an
@@ -18,6 +19,8 @@ Conn :: struct {
 	// command, cancellation unconfirmed). The pool discards it; it is never
 	// returned as healthy.
 	_broken:  bool,
+	// _opened_at lets the pool recycle a connection past its maximum lifetime.
+	_opened_at: time.Time,
 	_detail:  [128]u8,
 }
 
@@ -47,7 +50,7 @@ open :: proc(cfg: Config, loc := #caller_location) -> (Conn, Error) {
 		pq.finish(conn)
 		return Conn{}, err(kind, "postgres.open", loc)
 	}
-	return Conn{_pg = rawptr(conn)}, Error{}
+	return Conn{_pg = rawptr(conn), _opened_at = time.now()}, Error{}
 }
 
 // close releases the connection's libpq handle exactly once. Safe on a zero or
@@ -139,6 +142,10 @@ build_conninfo :: proc(ally: runtime.Allocator, cfg: Config) -> (keywords: []cst
 	add(&kw, &vs, ally, "channel_binding", cfg.ssl_mode == .Disable ? "disable" : "require")
 	add(&kw, &vs, ally, "connect_timeout", fmt_uint(ally, u64(timeout_s)))
 	add(&kw, &vs, ally, "application_name", "uruquim-crystals")
+	if cfg.statement_timeout_ms > 0 {
+		opt := strings.concatenate({"-c statement_timeout=", fmt_uint(ally, u64(cfg.statement_timeout_ms))}, ally)
+		add(&kw, &vs, ally, "options", opt)
+	}
 	if cfg.ssl_root_cert != "" {
 		add(&kw, &vs, ally, "sslrootcert", cfg.ssl_root_cert)
 	}
