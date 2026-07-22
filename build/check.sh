@@ -68,3 +68,8 @@ test "$(grep -vc '^#\|^$' "$CRYSTALS_ROOT/build/public-api.txt")" -eq 1 ||
 echo "crystals: web/health exports one detached Router constructor"
 echo "crystals: core dependency is one-way and pinned at $EXPECTED_CORE"
 echo "PASS: WP73 first Route Crystal"
+
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
+  bash "$CRYSTALS_ROOT/build/check_wp74_controls.sh"
