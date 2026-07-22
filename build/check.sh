@@ -101,11 +101,53 @@ fi
 
 verify_ledger db/migrate
 
+# --- validate: transport-free validation Library Crystal (WP81) ---
+# --- web/validate: the thin HTTP adapter (WP81) ---
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/validate" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+verify_ledger validate
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/web/validate" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+verify_ledger web/validate
+
+"$ODIN_BIN" test "$CRYSTALS_ROOT/tests/validate" \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT" \
+  -out:"$TMP/validate-test"
+
+"$ODIN_BIN" test "$CRYSTALS_ROOT/tests/validate_http" \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT" \
+  -out:"$TMP/validate-http-test"
+
+# Semantic negative control: if require_present stops flagging an absent field,
+# the adapter test that expects a "required" error must fail. A validation suite
+# that cannot fail is not evidence.
+mkdir -p "$TMP/vmut/validate"
+cp "$CRYSTALS_ROOT/validate/"*.odin "$TMP/vmut/validate/"
+mkdir -p "$TMP/vmut/web/validate"
+cp "$CRYSTALS_ROOT/web/validate/"*.odin "$TMP/vmut/web/validate/"
+sed -i 's/if state == .Absent {/if false {/' "$TMP/vmut/validate/validate.odin"
+if "$ODIN_BIN" test "$CRYSTALS_ROOT/tests/validate_http" \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$TMP/vmut" \
+  -out:"$TMP/vmut-test" >/dev/null 2>&1; then
+  fail "disabled require_present unexpectedly passed; the validation suite is not evidence"
+fi
+
+echo "crystals: validate and web/validate ledgers verified and controls sound"
+
 # No shipping Crystal may reach into core internals or private state.
-if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db"; then
+if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db" "$CRYSTALS_ROOT/validate"; then
   fail "a Crystal imports core internals"
 fi
-if grep -RqsE '\.(private)\b' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db"; then
+if grep -RqsE '\.(private)\b' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db" "$CRYSTALS_ROOT/validate"; then
   fail "a Crystal reaches core private state"
 fi
 

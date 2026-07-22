@@ -69,3 +69,18 @@ migration runs in its own transaction unless it explicitly opts out with
 database is never reported clean until an operator resolves it. `down` is offered
 but never presented as guaranteed data recovery. The full contract and RED
 corpus live in `planning/wp79-migration-contract.md`.
+
+## ADR-C009 — validation is transport-free, with a thin HTTP adapter
+
+**ACCEPTED, 2026-07-22 (WP81).** Domain validation lives in a transport-free
+Library Crystal (`validate`) that knows nothing about HTTP: it collects typed
+field errors, each a stable rule code plus a field path, with no user value. A
+separate Request Crystal (`web/validate`) maps those errors onto the framework's
+Phase-6 error envelope; the validation package never learns a status code.
+
+The three-state wire contract is modelled by `Patch(T)` — Absent, Null or Set —
+so a create input distinguishes an omitted required field from a set zero, and a
+PATCH distinguishes "leave", "clear" and "replace". Validation uses explicit rule
+calls rather than struct tags or reflection, so there are no unknown flags or
+contradictory annotations to fail closed on. The error set is hard-bounded and
+reports truncation. The full contract lives in `planning/wp81-validation.md`.
