@@ -51,3 +51,21 @@ pools through `App_State`; SQL and values remain separate. Reconsider a pure
 Odin protocol only when a measured deployment constraint makes libpq
 unusable. The four-arm evidence and complete pre-API contract live in
 `planning/postgres-driver-selection.md`.
+
+## ADR-C008 — migrations are a separate, fail-closed Tool that never runs at boot
+
+**ACCEPTED, 2026-07-22 (WP79).** Schema migration is a Tool Crystal
+(`db/migrate`) with its own executable, never a code path the HTTP server can
+reach: `web.serve` has no migration step. The runner composes the `db/postgres`
+Service Crystal for its connection, transactions and typed errors — a first-party
+Crystal may depend on another first-party Crystal in the same collection while
+the core still depends on neither.
+
+The contract is fail-closed. Migration ids are immutable and ordered; an applied
+migration whose file content changed is refused by checksum before any new DDL;
+a PostgreSQL advisory lock ensures only one runner applies at a time; each
+migration runs in its own transaction unless it explicitly opts out with
+`no_transaction`; and a failed or uncertain migration is recorded dirty and the
+database is never reported clean until an operator resolves it. `down` is offered
+but never presented as guaranteed data recovery. The full contract and RED
+corpus live in `planning/wp79-migration-contract.md`.

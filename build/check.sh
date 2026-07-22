@@ -92,6 +92,15 @@ if "$ODIN_BIN" doc "$CRYSTALS_ROOT/db/postgres" \
   fail "an FFI type escapes the db/postgres public surface"
 fi
 
+# --- db/migrate: the migration Tool Crystal (WP79+) ---
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/db/migrate" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+
+verify_ledger db/migrate
+
 # No shipping Crystal may reach into core internals or private state.
 if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db"; then
   fail "a Crystal imports core internals"
@@ -115,3 +124,9 @@ env \
   URUQUIM_ROOT="$URUQUIM_ROOT" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
   bash "$CRYSTALS_ROOT/build/check_postgres_controls.sh"
+
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_ROOT="$URUQUIM_ROOT" \
+  URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
+  bash "$CRYSTALS_ROOT/build/check_migrate_controls.sh"
