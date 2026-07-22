@@ -1,15 +1,15 @@
 package postgres_test
 
-// WP75 — PostgreSQL wire/error laboratory (RED corpus).
+// PostgreSQL execution and decoding corpus (WP75 authored RED, WP76 GREEN).
 //
-// These tests are written against the real db/postgres contract and run against
-// the pinned disposable PostgreSQL 16 container. Until WP76+ implement the
-// wrapper bodies they are RED-under-control: every fallible call returns
-// Error_Kind.Unimplemented, so each contract assertion fails with a single,
-// diagnosable reason. build/check_wp75_controls.sh proves that. No assertion
-// below accepts Unimplemented; WP76 (execution, decoding, SQLSTATE mapping),
-// WP77 (timeout, cancellation, bounds) and WP78 turn them green by
-// implementing, never by weakening the corpus.
+// These tests run against the pinned disposable PostgreSQL 16 container and
+// assert the real db/postgres contract: connection and auth/TLS policy, typed
+// SQLSTATE integrity kinds, parameter separation, NULL distinct from empty and
+// zero, fail-closed decoding, cardinality, connection-loss quarantine and
+// closed-connection refusal. WP76 implements the wrapper bodies that turn them
+// green. The two backpressure cases WP75 also authored — statement-timeout
+// cancellation and bounded oversized fields — live in tests/postgres_backpressure
+// and stay RED-under-control until WP77.
 
 import "core:testing"
 import pg "crystals:db/postgres"
@@ -255,18 +255,7 @@ query_one_many_rows_is_too_many :: proc(t: ^testing.T) {
 	testing.expect_value(t, qe.kind, K.Too_Many_Rows)
 }
 
-// --- timeout, cancellation, connection loss and bounds (flip in WP77) ---
-
-@(test)
-statement_timeout_is_typed_and_cancelled :: proc(t: ^testing.T) {
-	c, e := pg.open(test_config())
-	defer pg.close(&c)
-	testing.expect_value(t, e.kind, K.None)
-
-	_, qe := pg.query(&c, "sleep", "SELECT pg_sleep(5)", nil, pg.Query_Opts{deadline_ms = 150})
-	testing.expect_value(t, qe.kind, K.Timeout)
-	testing.expect_value(t, pg.err_sqlstate(&qe), "57014")
-}
+// --- connection loss (execution-level; handled in WP76) ---
 
 @(test)
 connection_loss_mid_query_quarantines :: proc(t: ^testing.T) {
@@ -280,25 +269,6 @@ connection_loss_mid_query_quarantines :: proc(t: ^testing.T) {
 	_, qe := pg.execute(&c, "after", "SELECT 1")
 	testing.expect_value(t, qe.kind, K.Connection_Lost)
 	testing.expect(t, pg.is_broken(&c), "a lost connection must be marked broken")
-}
-
-@(test)
-oversized_field_is_bounded :: proc(t: ^testing.T) {
-	c, e := pg.open(test_config())
-	defer pg.close(&c)
-	testing.expect_value(t, e.kind, K.None)
-
-	opts := pg.Query_Opts{max_field_bytes = 1024}
-	r, qe := pg.query_one(&c, "big", "SELECT repeat('x', 100000)", nil, opts)
-	defer pg.rows_close(&r)
-	// Either the query call or the decode must refuse; the wrapper never
-	// accumulates an unbounded field.
-	if qe.kind == K.None {
-		_, de := pg.row_text(&r, 0)
-		testing.expect_value(t, de.kind, K.Result_Too_Large)
-	} else {
-		testing.expect_value(t, qe.kind, K.Result_Too_Large)
-	}
 }
 
 @(test)
