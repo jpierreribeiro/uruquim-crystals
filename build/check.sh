@@ -20,6 +20,28 @@ test "$ACTUAL_CORE" = "$EXPECTED_CORE" ||
 TMP="$(mktemp -d -t uruquim-crystals-gate-XXXXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
+# verify_ledger proves that a package's compiler-visible public symbols are
+# exactly the symbols declared in build/public-api.txt. A package cannot grow
+# or shrink its surface without paying the ledger.
+verify_ledger() {
+  local pkg="$1"
+  local doc_syms ledger_syms
+  doc_syms="$("$ODIN_BIN" doc "$CRYSTALS_ROOT/$pkg" -short \
+      -collection:uruquim="$URUQUIM_ROOT" \
+      -collection:crystals="$CRYSTALS_ROOT" 2>/dev/null \
+    | grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*::' \
+    | sed -E 's/[[:space:]]*::.*//; s/^[[:space:]]+//' | sort -u)"
+  ledger_syms="$(awk -F' \\| ' -v p="$pkg" '$1==p{print $3}' \
+    "$CRYSTALS_ROOT/build/public-api.txt" | sort -u)"
+  if [ "$doc_syms" != "$ledger_syms" ]; then
+    echo "ledger mismatch for $pkg (< ledger, > compiler):" >&2
+    diff <(printf '%s\n' "$ledger_syms") <(printf '%s\n' "$doc_syms") >&2 || true
+    fail "$pkg exports do not match its ledger"
+  fi
+}
+
+# --- web/health: the first Route Crystal (WP73) ---
+
 "$ODIN_BIN" check "$CRYSTALS_ROOT/web/health" \
   -no-entry-point \
   -collection:uruquim="$URUQUIM_ROOT" \
@@ -35,19 +57,7 @@ trap 'rm -rf "$TMP"' EXIT
   -collection:crystals="$CRYSTALS_ROOT" \
   -out:"$TMP/health-example"
 
-DOC="$TMP/health-doc"
-"$ODIN_BIN" doc "$CRYSTALS_ROOT/web/health" -short \
-  -collection:uruquim="$URUQUIM_ROOT" \
-  -collection:crystals="$CRYSTALS_ROOT" >"$DOC"
-grep -qE '^\s*routes\s*::' "$DOC" || fail "routes is absent from compiler inventory"
-if grep -E '^\s*[A-Za-z_][A-Za-z0-9_]*\s*::' "$DOC" | grep -vE '^\s*routes\s*::' >/dev/null 2>&1; then
-  fail "web/health exports a symbol outside its one-row ledger"
-fi
-
-grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" &&
-  fail "a Crystal imports core internals"
-grep -RqsE '\.(private)\b' "$CRYSTALS_ROOT/web" &&
-  fail "a Crystal reaches core private state"
+verify_ledger web/health
 
 # Semantic negative control: changing the fixed route must make the public
 # behaviour test fail. A control that cannot fail is not evidence.
@@ -62,14 +72,37 @@ if "$ODIN_BIN" test "$TMP/mutant/tests/health" \
   fail "route mutation unexpectedly passed"
 fi
 
-test "$(grep -vc '^#\|^$' "$CRYSTALS_ROOT/build/public-api.txt")" -eq 1 ||
-  fail "first Crystal ledger is not exactly one symbol"
-
 echo "crystals: web/health exports one detached Router constructor"
+
+# --- db/postgres: the PostgreSQL Service Crystal (WP75+) ---
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/db/postgres" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+
+verify_ledger db/postgres
+
+# No shipping Crystal may reach into core internals or private state.
+if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db"; then
+  fail "a Crystal imports core internals"
+fi
+if grep -RqsE '\.(private)\b' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db"; then
+  fail "a Crystal reaches core private state"
+fi
+
 echo "crystals: core dependency is one-way and pinned at $EXPECTED_CORE"
-echo "PASS: WP73 first Route Crystal"
+echo "PASS: web/health and db/postgres ledgers verified"
+
+# --- WP74 driver-selection controls and WP75 wire/error laboratory ---
 
 env \
   URUQUIM_ODIN_BIN="$ODIN_BIN" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
   bash "$CRYSTALS_ROOT/build/check_wp74_controls.sh"
+
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_ROOT="$URUQUIM_ROOT" \
+  URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
+  bash "$CRYSTALS_ROOT/build/check_wp75_controls.sh"
