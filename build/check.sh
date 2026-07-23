@@ -12,7 +12,7 @@ fail() {
 
 test -d "$URUQUIM_ROOT/web" || fail "set URUQUIM_ROOT to the pinned Uruquim checkout"
 
-EXPECTED_CORE="f51fc127f4c7f937069b867d295e271c40e13ff5"
+EXPECTED_CORE="cdf737a6a07c24059758529e3fca7062dec91d82"
 ACTUAL_CORE="$(git -C "$URUQUIM_ROOT" rev-parse HEAD 2>/dev/null || true)"
 test "$ACTUAL_CORE" = "$EXPECTED_CORE" ||
   fail "core commit is $ACTUAL_CORE, expected $EXPECTED_CORE"
@@ -73,6 +73,49 @@ if "$ODIN_BIN" test "$TMP/mutant/tests/health" \
 fi
 
 echo "crystals: web/health exports one detached Router constructor"
+
+# --- web/sse: SSE over the accepted public stream surface (Phase-7 WP97) ---
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/web/sse" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+
+# The SSE package imports ONLY uruquim:web — never web/internal, never a
+# backend. A Crystal that reaches into core internals is not a Crystal.
+if grep -nE '^[[:space:]]*import[[:space:]].*"uruquim:(web/internal|vendor)' \
+  "$CRYSTALS_ROOT/web/sse"/*.odin; then
+  fail "web/sse reaches into core internals; SSE must use only the public surface"
+fi
+
+# Serial: the wire tests bind fixed ports and use the one-server-per-process
+# transport global.
+"$ODIN_BIN" test "$CRYSTALS_ROOT/tests/sse" \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT" \
+  -define:ODIN_TEST_THREADS=1 \
+  -out:"$TMP/sse-test"
+
+verify_ledger web/sse
+
+# Semantic negative control: SSE without its content type is not SSE. Removing
+# the `text/event-stream` media type must make the wire test fail — and fail
+# FAST (an assertion on the committed head), never hang. The `timeout` is
+# belt-and-suspenders: a hang is still a failed mutant.
+mkdir -p "$TMP/sse-mut/web/sse" "$TMP/sse-mut/tests/sse"
+cp "$CRYSTALS_ROOT/web/sse/sse.odin" "$TMP/sse-mut/web/sse/"
+cp "$CRYSTALS_ROOT/tests/sse/sse_test.odin" "$TMP/sse-mut/tests/sse/"
+sed -i 's#web.stream(ctx, "text/event-stream")#web.stream(ctx, "text/plain")#' \
+  "$TMP/sse-mut/web/sse/sse.odin"
+if timeout 90 "$ODIN_BIN" test "$TMP/sse-mut/tests/sse" \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$TMP/sse-mut" \
+  -define:ODIN_TEST_THREADS=1 \
+  -out:"$TMP/sse-mut-test" >/dev/null 2>&1; then
+  fail "SSE content-type mutation (text/event-stream dropped) unexpectedly passed"
+fi
+
+echo "crystals: web/sse frames events over the public stream surface, no core internals"
 
 # --- db/postgres: the PostgreSQL Service Crystal (WP75+) ---
 

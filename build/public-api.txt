@@ -1,5 +1,12 @@
 # package | kind | symbol
 web/health | procedure | routes
+web/sse | constant | MAX_EVENT_BYTES
+web/sse | type | Event
+web/sse | enum | Send_Result
+web/sse | procedure | open
+web/sse | procedure | send
+web/sse | procedure | comment
+web/sse | procedure | last_event_id
 db/postgres | enum | Error_Kind
 db/postgres | type | Error
 db/postgres | procedure | is_err
