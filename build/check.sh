@@ -254,3 +254,10 @@ env \
   URUQUIM_ROOT="$URUQUIM_ROOT" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
   bash "$CRYSTALS_ROOT/build/check_notes_controls.sh"
+
+# The http_client Composition Crystal (Phase 7.5 Track A). No database; it starts
+# its own OpenSSL peers for the TLS certificate-verification corpus.
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_ROOT="$URUQUIM_ROOT" \
+  bash "$CRYSTALS_ROOT/build/check_http_client_controls.sh"
