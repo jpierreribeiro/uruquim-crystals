@@ -167,6 +167,28 @@ verify_ledger web/validate
   -collection:crystals="$CRYSTALS_ROOT"
 verify_ledger db/sqlcheck
 
+# --- Phase 7.5 Composition Crystals: http_client (A1-A3) and web/metrics (A4) ---
+# http_client's own plaintext + TLS corpus runs in check_http_client_controls.sh
+# (it needs OpenSSL peers); here we freeze the two public ledgers and run the
+# metrics corpus.
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/http_client" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+verify_ledger http_client
+
+"$ODIN_BIN" check "$CRYSTALS_ROOT/web/metrics" \
+  -no-entry-point \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT"
+verify_ledger web/metrics
+
+"$ODIN_BIN" test "$CRYSTALS_ROOT/tests/metrics" \
+  -collection:uruquim="$URUQUIM_ROOT" \
+  -collection:crystals="$CRYSTALS_ROOT" \
+  -out:"$TMP/metrics-test"
+
 # --- examples/notes: the real PostgreSQL reference application (WP83) ---
 
 "$ODIN_BIN" check "$CRYSTALS_ROOT/examples/notes" \
@@ -202,10 +224,10 @@ fi
 echo "crystals: validate and web/validate ledgers verified and controls sound"
 
 # No shipping Crystal may reach into core internals or private state.
-if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db" "$CRYSTALS_ROOT/validate"; then
+if grep -Rqs 'uruquim:web/internal' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db" "$CRYSTALS_ROOT/validate" "$CRYSTALS_ROOT/http_client"; then
   fail "a Crystal imports core internals"
 fi
-if grep -RqsE '\.(private)\b' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db" "$CRYSTALS_ROOT/validate"; then
+if grep -RqsE '\.(private)\b' "$CRYSTALS_ROOT/web" "$CRYSTALS_ROOT/db" "$CRYSTALS_ROOT/validate" "$CRYSTALS_ROOT/http_client"; then
   fail "a Crystal reaches core private state"
 fi
 
@@ -223,6 +245,18 @@ for pkg in web/health db/postgres db/migrate validate web/validate db/sqlcheck; 
     fail "frozen package $pkg is absent from the public ledger"
 done
 echo "crystals: Phase 6 data stack is frozen (6 packages, docs/phase-6-freeze.md)"
+
+# --- Phase 7.5 freeze marker: the Composition Crystals (Track A) ---
+
+test -f "$CRYSTALS_ROOT/docs/phase-7.5-composition-freeze.md" ||
+  fail "the Phase 7.5 composition freeze document is missing"
+grep -q 'Status: FROZEN' "$CRYSTALS_ROOT/docs/phase-7.5-composition-freeze.md" ||
+  fail "the Phase 7.5 composition freeze document does not declare the freeze"
+for pkg in http_client web/metrics; do
+  awk -F' \\| ' -v p="$pkg" '$1==p{f=1} END{exit f?0:1}' "$CRYSTALS_ROOT/build/public-api.txt" ||
+    fail "frozen composition package $pkg is absent from the public ledger"
+done
+echo "crystals: Phase 7.5 composition stack is frozen (http_client + metrics, docs/phase-7.5-composition-freeze.md)"
 
 # --- WP74 driver-selection controls and the PostgreSQL Service Crystal ---
 
@@ -254,3 +288,10 @@ env \
   URUQUIM_ROOT="$URUQUIM_ROOT" \
   URUQUIM_TEST_DATABASE_URL="${URUQUIM_TEST_DATABASE_URL:-}" \
   bash "$CRYSTALS_ROOT/build/check_notes_controls.sh"
+
+# The http_client Composition Crystal (Phase 7.5 Track A). No database; it starts
+# its own OpenSSL peers for the TLS certificate-verification corpus.
+env \
+  URUQUIM_ODIN_BIN="$ODIN_BIN" \
+  URUQUIM_ROOT="$URUQUIM_ROOT" \
+  bash "$CRYSTALS_ROOT/build/check_http_client_controls.sh"
